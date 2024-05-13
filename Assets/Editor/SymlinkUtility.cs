@@ -146,7 +146,7 @@ namespace Parabox
 #endif
 
 			//UnityEngine.Debug.Log(string.Format("Created symlink: {0} <=> {1}", targetPath, sourceFolderPath));
-
+			File.WriteAllText(Path.Join(sourcePath, "autogen_originalPath.txt"), sourcePath);
 			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
 		}
 
