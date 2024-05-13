@@ -1,5 +1,3 @@
-# UnitySymLink
-
 # IMPORTANT: THIS IS A PUBLIC GIT REPO. 
 # Don't publish any confidential data here.
 
