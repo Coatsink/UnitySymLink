@@ -4,6 +4,8 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Diagnostics;
+using System.Collections.Generic;
+using System;
 
 namespace Parabox
 {
@@ -17,12 +19,15 @@ namespace Parabox
 	[InitializeOnLoad]
 	public static class SymlinkUtility
 	{
+
+		const string PREFS_KEY = "[SymlinkUtility_KEY]";
 		private enum SymlinkType
 		{
 			Absolute,
 			Relative
 		}
 
+		// FileAttributes that match a junction folder.
 		// FileAttributes that match a junction folder.
 		const FileAttributes FOLDER_SYMLINK_ATTRIBS = FileAttributes.Directory | FileAttributes.ReparsePoint;
 
@@ -77,13 +82,6 @@ namespace Parabox
 			Symlink(SymlinkType.Absolute);
 		}
 
-		// Create a relative symbolic link
-		[MenuItem("Assets/Create/Folder (Relative Symlink)", false, 22)]
-		static void SymlinkRelative()
-		{
-			Symlink(SymlinkType.Relative);
-		}
-
 		static void Symlink(SymlinkType linkType)
 		{
 			string sourceFolderPath = EditorUtility.OpenFolderPanel("Select Folder Source", "", "");
@@ -106,7 +104,7 @@ namespace Parabox
 				return;
 			}
 
-			Object uobject = Selection.activeObject;
+			UnityEngine.Object uobject = Selection.activeObject;
 
 			string targetPath = uobject != null ? AssetDatabase.GetAssetPath(uobject) : null;
 
@@ -145,9 +143,40 @@ namespace Parabox
             // Is Linux the same as OSX?
 #endif
 
-			//UnityEngine.Debug.Log(string.Format("Created symlink: {0} <=> {1}", targetPath, sourceFolderPath));
-			File.WriteAllText(Path.Join(sourcePath, "autogen_originalPath.txt"), sourcePath);
+			SaveOriginalPath(targetPath, sourcePath);
+		}
+
+		private static void SaveOriginalPath(string newPath, string originalPath)
+		{
+			File.WriteAllText(Path.Join(originalPath, "autogen_originalPath.txt"), originalPath);
 			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+			InitialiseOriginalPathsDict();
+			var originalPathsDict = JsonUtility.FromJson<OriginalPathsDictionary>(EditorPrefs.GetString(PREFS_KEY));
+			newPath = newPath.Replace("/", "\\");
+			originalPath = originalPath.Replace("/", "\\");
+			originalPathsDict[newPath] = originalPath;
+			EditorPrefs.SetString(PREFS_KEY, JsonUtility.ToJson(originalPathsDict));
+		}
+
+		private static void InitialiseOriginalPathsDict()
+		{
+			if (!EditorPrefs.HasKey(PREFS_KEY))
+			{
+				EditorPrefs.SetString(PREFS_KEY, JsonUtility.ToJson(new OriginalPathsDictionary()));
+			}
+		}
+
+		public static string GetOriginalPath(string path)
+		{
+			var originalPathsDict = JsonUtility.FromJson<OriginalPathsDictionary>(EditorPrefs.GetString(PREFS_KEY));
+			foreach (var pair in originalPathsDict)
+			{
+				if(path.Contains(pair.Key))
+				{
+					return path.Replace(pair.Key, pair.Value);
+				}
+			}
+			return null;
 		}
 
 		static string GetRelativePath(string sourcePath, string outputPath)
@@ -219,34 +248,38 @@ namespace Parabox
 				}
 			}
 		}
+	}
 
-		static void ExecuteBashCommand(string command)
+	public class OriginalPathsDictionary : Dictionary<string, string>, ISerializationCallbackReceiver
+	{
+		[Serializable]
+		public class Pair
 		{
-			command = command.Replace("\"", "\"\"");
+			public string key, value;
+		}
 
-			var proc = new Process()
+		public List<Pair> _serializationPairs = new();
+
+		public void OnAfterDeserialize()
+		{
+			this.Clear();
+			foreach (var pair in _serializationPairs)
 			{
-				StartInfo = new ProcessStartInfo
-				{
-					FileName = "/bin/bash",
-					Arguments = "-c \"" + command + "\"",
-					UseShellExecute = false,
-					RedirectStandardOutput = true,
-					RedirectStandardError = true,
-					CreateNoWindow = true
-				}
-			};
+				this[pair.key] = pair.value;
+			}
+		}
 
-			using (proc)
+		public void OnBeforeSerialize()
+		{
+			_serializationPairs.Clear();
+			foreach(var keyValue in this)
 			{
-				proc.Start();
-				proc.WaitForExit();
-
-				if (!proc.StandardError.EndOfStream)
-				{
-					UnityEngine.Debug.LogError(proc.StandardError.ReadToEnd());
-				}
+				_serializationPairs.Add(new Pair() { 
+					key = keyValue.Key, 
+					value = keyValue.Value	
+				});
 			}
 		}
 	}
+
 }
